@@ -608,6 +608,660 @@ def save_token(init_data, token, tokens=None):
         print(Fore.RED + f"❌ Error saat menyimpan token: {str(e)}")
         return False
 
+# Check question config
+def check_question_config(token, proxies=None):
+    try:
+        proxy = get_proxy(proxies)
+        headers = get_common_headers(token)
+        
+        response = requests.get(
+            "https://mpc-api.planx.io/api/v1/telegram/question/config",
+            headers=headers,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                config_data = data.get("data", {})
+                total_questions = config_data.get("numbers", 0)
+                not_finished = config_data.get("notFinished", 0)
+                
+                print(Fore.YELLOW + f"📊 Status Pertanyaan: Total {total_questions}, Belum Selesai: {not_finished}")
+                
+                # Improved logic for question status interpretation
+                if total_questions > 0 and not_finished == 0:
+                    print(Fore.GREEN + "✅ Akun ini sudah menjawab semua pertanyaan dengan benar.")
+                    config_data["needs_answers"] = False
+                elif total_questions == 0 and not_finished == 0:
+                    print(Fore.YELLOW + "ℹ️ Akun ini belum memiliki pertanyaan.")
+                    config_data["needs_answers"] = False
+                else:
+                    print(Fore.YELLOW + f"ℹ️ Akun ini masih memiliki {not_finished} pertanyaan yang belum diselesaikan.")
+                    config_data["needs_answers"] = True
+                
+                return config_data
+            else:
+                print(Fore.RED + f"❌ Gagal mendapatkan config pertanyaan: {data.get('msg')}")
+                return None
+        else:
+            print(Fore.RED + f"❌ Gagal mendapatkan config pertanyaan dengan status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(Fore.RED + f"❌ Error saat mendapatkan config pertanyaan: {str(e)}")
+        return None
+
+# Create share message
+def create_share_message(token, proxies=None):
+    try:
+        proxy = get_proxy(proxies)
+        headers = get_common_headers(token)
+        payload = {
+            "text": "🚀 Bergabunglah dengan PlanX Wallet & buka utilitas crypto dunia nyata!\n\nMengapa PlanX?\n\nUndang teman dan dapatkan 1.000+ PEPE secara instan\nSelesaikan misi harian & buka hadiah berlapis\nNikmati acara kejutan menyenangkan — kapan saja!\n\n▶️ Tingkatkan penghasilan Anda dengan PlanX sekarang ⬇️\n",
+            "btnTitle": "Bergabunglah dengan PlanX & buka utilitas crypto dunia nyata! 💰"
+        }
+        
+        response = requests.post(
+            "https://mpc-api.planx.io/api/v1/telegram/share/msg/new",
+            headers=headers,
+            json=payload,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                share_data = data.get("data", {})
+                share_id = share_data.get("id")
+                expiration = share_data.get("expiration_date")
+                
+                print(Fore.GREEN + f"✅ Berhasil membuat pesan share dengan ID: {share_id}")
+                
+                return share_data
+            else:
+                print(Fore.RED + f"❌ Gagal membuat pesan share: {data.get('msg')}")
+                return None
+        else:
+            print(Fore.RED + f"❌ Gagal membuat pesan share dengan status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(Fore.RED + f"❌ Error saat membuat pesan share: {str(e)}")
+        return None
+
+def get_questions(token, proxies=None):
+    try:
+        proxy = get_proxy(proxies)
+        headers = get_common_headers(token)
+        
+        response = requests.get(
+            "https://mpc-api.planx.io/api/v1/telegram/question/view",
+            headers=headers,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                questions_data = data.get("data", {})
+                questions = questions_data.get("questions", [])
+                answers = questions_data.get("answers", [])
+                results = questions_data.get("results", [])
+
+                # Inisialisasi variabel
+                unanswered_indices = []
+                has_questions = False
+                has_results = len(results) > 0
+                
+                # Cetak informasi dasar
+                if questions:
+                    print(Fore.CYAN + f"📝 Mendapatkan {len(questions)} pertanyaan")
+                    has_questions = True
+                    
+                    # Jika ada hasil untuk semua pertanyaan, periksa mana yang belum benar
+                    if has_results:
+                        if len(results) == len(questions):
+                            correct_count = sum(1 for result in results if result == 1)
+                            print(Fore.CYAN + f"📊 Status: {correct_count}/{len(questions)} pertanyaan dijawab dengan benar")
+                            
+                            # Jika semua sudah benar, informasikan
+                            if correct_count == len(questions):
+                                print(Fore.GREEN + "✅ Semua pertanyaan sudah dijawab dengan benar dalam sistem")
+                            else:
+                                # Catat pertanyaan yang belum dijawab dengan benar
+                                for i, result in enumerate(results):
+                                    if result == 0:
+                                        unanswered_indices.append(i)
+                                
+                                print(Fore.YELLOW + f"⚠️ Ditemukan {len(unanswered_indices)} pertanyaan yang belum dijawab dengan benar")
+                                
+                                # Tampilkan detail pertanyaan yang belum dijawab
+                                for i in unanswered_indices:
+                                    if i < len(questions):
+                                        question = questions[i]
+                                        question_id = question.get("questionId")
+                                        question_text = question.get("questionText")
+                                        print(Fore.YELLOW + f"\n🔍 Pertanyaan belum dijawab #{i+1} (ID: {question_id}): {question_text}")
+                                        
+                                        options = question.get("options", [])
+                                        for option in options:
+                                            option_id = option.get("optionId")
+                                            option_text = option.get("optionText")
+                                            print(Fore.WHITE + f"   📌 Opsi {option.get('optionOrder')}: {option_text} (ID: {option_id})")
+                        else:
+                            # Ada ketidaksesuaian antara jumlah hasil dan jumlah pertanyaan
+                            print(Fore.YELLOW + f"⚠️ Ketidaksesuaian data: {len(results)} hasil untuk {len(questions)} pertanyaan")
+                            unanswered_indices = list(range(len(questions)))
+                    else:
+                        # Tidak ada hasil, anggap semua pertanyaan belum dijawab
+                        unanswered_indices = list(range(len(questions)))
+                        print(Fore.YELLOW + f"⚠️ Semua {len(questions)} pertanyaan perlu dijawab")
+                else:
+                    print(Fore.YELLOW + "ℹ️ Tidak ada pertanyaan yang tersedia")
+
+                # Tambahkan informasi tambahan ke data yang dikembalikan
+                questions_data["unanswered_indices"] = unanswered_indices
+                questions_data["has_answered_questions"] = has_questions and not unanswered_indices and has_results
+                questions_data["total_questions"] = len(questions)
+                questions_data["correct_questions"] = len(questions) - len(unanswered_indices) if has_results else 0
+                
+                return questions_data
+            else:
+                print(Fore.RED + f"❌ Gagal mendapatkan pertanyaan: {data.get('msg')}")
+                return None
+        else:
+            print(Fore.RED + f"❌ Gagal mendapatkan pertanyaan dengan status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(Fore.RED + f"❌ Error saat mendapatkan pertanyaan: {str(e)}")
+        return None
+
+# Answer a question
+def answer_question(token, question_id, option_id, proxies=None):
+    try:
+        proxy = get_proxy(proxies)
+        headers = get_common_headers(token)
+        payload = {
+            "questionId": question_id,
+            "optionId": option_id
+        }
+        
+        response = requests.post(
+            "https://mpc-api.planx.io/api/v1/telegram/question/answer",
+            headers=headers,
+            json=payload,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                result_data = data.get("data", {})
+                result = result_data.get("result")
+                amount = result_data.get("amount", "0")
+                next_question_id = result_data.get("nextQuestionId")
+                
+                if result == 1:
+                    print(Fore.GREEN + f"✅ Jawaban benar! Mendapatkan {amount} PEPE. Next Question ID: {next_question_id}")
+                else:
+                    print(Fore.RED + f"❌ Jawaban salah. Next Question ID: {next_question_id}")
+                
+                return result_data
+            else:
+                print(Fore.RED + f"❌ Gagal menjawab pertanyaan: {data.get('msg')}")
+                return None
+        else:
+            print(Fore.RED + f"❌ Gagal menjawab pertanyaan dengan status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(Fore.RED + f"❌ Error saat menjawab pertanyaan: {str(e)}")
+        return None
+
+# Reset question
+def reset_question(token, question_id, proxies=None):
+    try:
+        proxy = get_proxy(proxies)
+        headers = get_common_headers(token)
+        payload = {
+            "questionId": question_id
+        }
+        
+        response = requests.post(
+            "https://mpc-api.planx.io/api/v1/telegram/question/reset",
+            headers=headers,
+            json=payload,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                print(Fore.GREEN + f"✅ Berhasil reset pertanyaan ID: {question_id}")
+                return True
+            else:
+                print(Fore.RED + f"❌ Gagal reset pertanyaan: {data.get('msg')}")
+                return False
+        else:
+            print(Fore.RED + f"❌ Gagal reset pertanyaan dengan status code: {response.status_code}")
+            return False
+    except Exception as e:
+        print(Fore.RED + f"❌ Error saat reset pertanyaan: {str(e)}")
+        return False
+
+# Check jackpot
+def check_jackpot(token, proxies=None):
+    try:
+        proxy = get_proxy(proxies)
+        headers = get_common_headers(token)
+        
+        response = requests.post(
+            "https://mpc-api.planx.io/api/v1/telegram/question/jackpot",
+            headers=headers,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                jackpot_data = data.get("data", {})
+                amount = jackpot_data.get("amount", "0")
+                
+                print(Fore.MAGENTA + f"🎰 Jackpot Amount: {amount} PEPE")
+                
+                return jackpot_data
+            else:
+                print(Fore.RED + f"❌ Gagal mendapatkan jackpot: {data.get('msg')}")
+                return None
+        else:
+            print(Fore.RED + f"❌ Gagal mendapatkan jackpot dengan status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(Fore.RED + f"❌ Error saat mendapatkan jackpot: {str(e)}")
+        return None
+
+# Update get_correct_answer dengan jawaban untuk pertanyaan AMA
+def get_correct_answer(question):
+    """Return the correct option ID based on question content"""
+    question_id = question.get("questionId")
+    question_text = question.get("questionText")
+    options = question.get("options", [])
+    
+    # Math questions
+    if "+" in question_text or "-" in question_text or "*" in question_text or "/" in question_text:
+        # Extract the math expression
+        expression = question_text.split("=")[0].strip()
+        try:
+            correct_result = eval(expression)
+            
+            # Find the option that matches the result
+            for option in options:
+                option_text = option.get("optionText")
+                try:
+                    if float(option_text) == correct_result:
+                        return option.get("optionId")
+                except:
+                    pass
+        except:
+            pass
+    
+    # Hard-coded answers for known questions
+    known_answers = {
+        # Siapa yang menentukan harga gas?
+        134: 402,  # "Pasar Jaringan Saat Ini"
+        
+        # Apa itu dompet MPC?
+        153: 458,  # "Dompet dengan Kunci Tersebar"
+        
+        # Apa risiko dompet self-custody?
+        161: 481,  # "Kehilangan Kunci, Kehilangan Aset"
+        
+        # Bear merujuk pada apa?
+        28: 82,    # "Lingkungan pasar kripto dengan harga turun"
+        
+        # Apa arti TVL?
+        94: 281,   # "Total Nilai Terkunci, total nilai dana yang terkunci dalam protokol"
+        
+        # Whale merujuk pada tipe orang seperti apa?
+        29: 85,    # "Pemegang besar"
+        
+        # Apa kepanjangan Dex?
+        33: 98,    # "Bursa Terdesentralisasi"
+        
+        # AMA adalah singkatan dari apa?
+        19: 56,    # "Tanya Saya Apa Saja"
+    }
+    
+    # Check if we have a hard-coded answer
+    if question_id in known_answers:
+        return known_answers[question_id]
+    
+    # Check for AMA question by text
+    if "AMA" in question_text and "singkatan" in question_text:
+        # Cari opsi yang berisi "Tanya Saya"
+        for option in options:
+            option_text = option.get("optionText").lower()
+            if "tanya saya" in option_text or ("tanya" in option_text and "saya" in option_text):
+                return option.get("optionId")
+    
+    # For other questions, print options to debug and return first option as default
+    print(Fore.YELLOW + f"⚠️ Pertanyaan tidak dikenal: {question_text}")
+    for option in options:
+        print(f"   - {option.get('optionId')}: {option.get('optionText')}")
+    
+    return options[0].get("optionId") if options else None
+
+# Updated function to try all possible answers
+def try_all_answers(token, question, proxies=None):
+    """Try all possible options until finding the correct answer"""
+    question_id = question.get("questionId")
+    options = question.get("options", [])
+    
+    print(Fore.YELLOW + f"🔄 Mencoba semua kemungkinan jawaban untuk pertanyaan ID: {question_id}")
+    
+    # Get the initial questions data to check if this is already answered
+    initial_questions_data = get_questions(token, proxies)
+    if initial_questions_data:
+        results = initial_questions_data.get("results", [])
+        questions = initial_questions_data.get("questions", [])
+        
+        # Find question index in the questions list
+        question_index = -1
+        for i, q in enumerate(questions):
+            if q.get("questionId") == question_id:
+                question_index = i
+                break
+        
+        # If we found the question and it's already answered correctly
+        if question_index != -1 and question_index < len(results) and results[question_index] == 1:
+            print(Fore.GREEN + f"✅ Pertanyaan ini sudah dijawab dengan benar sebelumnya")
+            # Create a mock result object with success
+            return {"result": 1, "amount": "0", "nextQuestionId": None}
+    
+    for option in options:
+        option_id = option.get("optionId")
+        option_text = option.get("optionText")
+        
+        print(Fore.BLUE + f"  Mencoba jawaban: {option_text}")
+        
+        # Answer the question with this option
+        result = answer_question(token, question_id, option_id, proxies)
+        if not result:
+            continue
+        
+        # If correct, return the result
+        if result.get("result") == 1:
+            print(Fore.GREEN + f"✅ Jawaban benar ditemukan: {option_text}")
+            return result
+        
+        # Get nextQuestionId from result
+        next_question_id = result.get("nextQuestionId")
+        
+        # Create share message for reset
+        print(Fore.YELLOW + f"  ⚠️ Jawaban salah, mencoba reset...")
+        share_data = create_share_message(token, proxies)
+        
+        if share_data:
+            # Try reset with nextQuestionId first if available
+            reset_success = False
+            if next_question_id is not None:
+                print(Fore.YELLOW + f"  🔄 Mencoba reset dengan nextQuestionId: {next_question_id}")
+                reset_success = reset_question(token, next_question_id, proxies)
+            
+            # If that fails, try with original questionId
+            if not reset_success:
+                print(Fore.YELLOW + f"  🔄 Mencoba reset dengan questionId: {question_id}")
+                reset_success = reset_question(token, question_id, proxies)
+            
+            # If both reset attempts fail, refresh questions
+            if not reset_success:
+                print(Fore.YELLOW + "  🔄 Reset gagal, mencoba refresh data pertanyaan...")
+                time.sleep(2)
+                
+                # Refresh data
+                refresh_questions = get_questions(token, proxies)
+                if not refresh_questions or not refresh_questions.get("questions"):
+                    print(Fore.RED + "  ❌ Tidak berhasil mendapatkan pertanyaan baru")
+        
+        # Wait before next attempt
+        time.sleep(2)
+    
+    # After trying all options and failing, check if the question is actually answered correctly
+    # This handles the case where the API returned success but our code didn't catch it
+    final_questions_data = get_questions(token, proxies)
+    if final_questions_data:
+        results = final_questions_data.get("results", [])
+        questions = final_questions_data.get("questions", [])
+        
+        # Find question index in the questions list
+        question_index = -1
+        for i, q in enumerate(questions):
+            if q.get("questionId") == question_id:
+                question_index = i
+                break
+        
+        # If we found the question and it's already answered correctly
+        if question_index != -1 and question_index < len(results) and results[question_index] == 1:
+            print(Fore.GREEN + f"✅ Pertanyaan ini sudah dijawab dengan benar walaupun tidak terdeteksi")
+            # Create a mock result object with success
+            return {"result": 1, "amount": "0", "nextQuestionId": None}
+    
+    print(Fore.RED + "❌ Tidak dapat menemukan jawaban yang benar setelah mencoba semua opsi")
+    return None
+
+# Updated function to handle a specific question
+def process_single_question(token, question, max_attempts=3, proxies=None):
+    """Process a single question, trying multiple times if needed until the answer is correct"""
+    question_id = question.get("questionId")
+    question_text = question.get("questionText")
+    
+    print(Fore.BLUE + f"\n📝 Pertanyaan: {question_text}")
+    
+    # First try with our best guess
+    attempts = 0
+    while attempts < max_attempts:
+        attempts += 1
+        print(Fore.YELLOW + f"Percobaan ke-{attempts} untuk pertanyaan ID: {question_id}")
+        
+        # Get the best answer we can determine
+        option_id = get_correct_answer(question)
+        if not option_id:
+            print(Fore.RED + "❌ Tidak dapat menentukan jawaban yang benar")
+            # If we can't determine, try all possible answers
+            result = try_all_answers(token, question)
+            return result
+        
+        # Answer the question
+        result = answer_question(token, question_id, option_id, proxies)
+        if not result:
+            print(Fore.RED + "❌ Gagal menjawab pertanyaan, melewati...")
+            return None
+        
+        # Check if answer was correct
+        if result.get("result") == 1:
+            amount = float(result.get("amount", "0"))
+            print(Fore.GREEN + f"✅ Berhasil menjawab pertanyaan dengan benar! Mendapatkan {amount} PEPE.")
+            return result
+        
+        # Get next_question_id from result
+        next_question_id = result.get("nextQuestionId")
+        
+        # If answer was wrong, create share message for reset
+        print(Fore.YELLOW + f"⚠️ Jawaban salah, membuat pesan share untuk reset menggunakan nextQuestionId: {next_question_id}...")
+        share_data = create_share_message(token, proxies)
+        
+        if share_data and next_question_id is not None:
+            # Try reset with nextQuestionId
+            reset_result = reset_question(token, next_question_id, proxies)
+            
+            if reset_result:
+                print(Fore.GREEN + f"✅ Berhasil reset pertanyaan dengan ID: {next_question_id}")
+            else:
+                # If reset fails, try with original question ID
+                print(Fore.YELLOW + f"⚠️ Reset dengan nextQuestionId gagal, mencoba reset dengan questionId: {question_id}...")
+                reset_result = reset_question(token, question_id, proxies)
+                
+                if reset_result:
+                    print(Fore.GREEN + f"✅ Berhasil reset pertanyaan dengan ID: {question_id}")
+                else:
+                    # If both resets fail, refresh question data
+                    print(Fore.YELLOW + "⚠️ Reset gagal, mendapatkan data pertanyaan baru...")
+                    time.sleep(2)
+                    
+                    new_questions_data = get_questions(token, proxies)
+                    if new_questions_data:
+                        # Find the question in the updated data
+                        new_questions = new_questions_data.get("questions", [])
+                        unanswered_indices = new_questions_data.get("unanswered_indices", [])
+                        
+                        if unanswered_indices and new_questions:
+                            # Find the question with matching ID or first unanswered
+                            target_question = None
+                            for idx in unanswered_indices:
+                                if idx < len(new_questions):
+                                    if new_questions[idx].get("questionId") == question_id:
+                                        target_question = new_questions[idx]
+                                        break
+                            
+                            # If not found, use first unanswered question
+                            if not target_question and unanswered_indices and len(new_questions) > unanswered_indices[0]:
+                                target_question = new_questions[unanswered_indices[0]]
+                            
+                            if target_question:
+                                print(Fore.GREEN + "✅ Berhasil mendapatkan pertanyaan baru")
+                                return process_single_question(token, target_question, max_attempts - attempts, proxies)
+                    
+                    print(Fore.RED + "❌ Tidak dapat melanjutkan dengan ID pertanyaan ini")
+                    return None
+        else:
+            print(Fore.RED + "❌ Gagal membuat pesan share atau tidak ada nextQuestionId")
+            # Try refreshing question data
+            time.sleep(2)
+            return None
+        
+        # Wait before next attempt
+        time.sleep(2)
+    
+    # If exhausted all attempts with best guesses, try all possible answers
+    print(Fore.YELLOW + "⚠️ Terlalu banyak percobaan gagal, mencoba semua kemungkinan jawaban...")
+    return try_all_answers(token, question)
+
+# Update fungsi process_questions dengan logika jackpot yang lebih baik
+def process_questions(token, proxies=None):
+    # Flag untuk melacak apakah kita baru saja menyelesaikan pertanyaan di sesi ini
+    questions_completed_in_this_session = False
+    
+    # Check if there are questions to answer
+    config = check_question_config(token, proxies)
+    if not config:
+        return False
+    
+    # Get available questions with details about unanswered ones
+    questions_data = get_questions(token, proxies)
+    if not questions_data:
+        return False
+    
+    questions = questions_data.get("questions", [])
+    results = questions_data.get("results", [])
+    unanswered_indices = questions_data.get("unanswered_indices", [])
+    
+    # Fix: Improved detection of whether all questions have been answered
+    all_questions_answered = (len(questions) > 0 and len(unanswered_indices) == 0 and len(results) > 0) or \
+                            (len(questions) == 0 and config.get("notFinished", 0) == 0)
+    
+    # Check if we need to answer questions based on the config
+    not_finished = config.get("notFinished", 0)
+    total_questions = config.get("numbers", 0)
+    
+    print(Fore.YELLOW + f"📊 Status: Total Pertanyaan={total_questions}, Belum Selesai={not_finished}")
+    
+    # If there are no questions or no unanswered ones
+    if all_questions_answered:
+        print(Fore.GREEN + "✅ Semua pertanyaan sudah dijawab dengan benar")
+        
+        # Kita akan cek jackpot di akhir fungsi hanya jika pertanyaan diselesaikan dalam sesi ini
+    
+    # If we still need to answer questions
+    if not questions and not_finished > 0:
+        print(Fore.YELLOW + "ℹ️ Tidak ada pertanyaan yang tersedia untuk dijawab")
+        return True
+    
+    # Process unanswered questions if there are any
+    if len(unanswered_indices) > 0:
+        print(Fore.CYAN + f"\n🔄 Memproses {len(unanswered_indices)} pertanyaan yang belum dijawab dengan benar...")
+        
+        total_correct = 0
+        total_earnings = 0
+        
+        # Process only unanswered questions
+        for index in unanswered_indices:
+            if index < len(questions):
+                question = questions[index]
+                question_id = question.get("questionId")
+                
+                print(Fore.CYAN + f"\n[Question #{index+1}] Memproses pertanyaan ID: {question_id}")
+                
+                # Process this question until it's answered correctly
+                result = process_single_question(token, question)
+                
+                if result and result.get("result") == 1:
+                    total_correct += 1
+                    amount = float(result.get("amount", "0"))
+                    total_earnings += amount
+                
+                # Wait 2 seconds between questions
+                if index < unanswered_indices[-1]:
+                    print(Fore.YELLOW + "⏳ Menunggu 2 detik sebelum pertanyaan berikutnya...")
+                    time.sleep(2)
+        
+        # Check if all unanswered questions were answered correctly
+        if total_correct == len(unanswered_indices) and total_correct > 0:
+            print(Fore.GREEN + f"\n✅ Semua pertanyaan ({total_correct}/{len(unanswered_indices)}) belum dijawab berhasil dijawab dengan benar!")
+   
+            # Check jackpot after answering all questions correctly
+            print(Fore.MAGENTA + "🎰 Memeriksa jackpot...")
+            jackpot_data = check_jackpot(token, proxies)
+         
+            # Verify all questions are now answered correctly by refreshing data
+            refreshed_data = check_question_config(token, proxies)
+            if refreshed_data and refreshed_data.get("notFinished", 0) == 0:
+                # If we've successfully answered questions in this session, set the flag
+                questions_completed_in_this_session = True
+                
+                # Print summary of earnings from questions
+                print(Fore.GREEN + f"\n💰 Total PEPE yang didapatkan dari pertanyaan yang belum dijawab: {total_earnings}")
+            else:
+                print(Fore.YELLOW + "⚠️ Beberapa pertanyaan masih belum dijawab dengan benar setelah percobaan.")
+        else:
+            print(Fore.YELLOW + f"\n⚠️ Hanya {total_correct}/{len(unanswered_indices)} pertanyaan yang berhasil dijawab dengan benar.")
+            print(Fore.YELLOW + "⚠️ Tidak dapat memeriksa jackpot karena tidak semua pertanyaan terjawab dengan benar.")
+    
+    # Cek jackpot HANYA jika semua jawaban benar DAN kita baru saja menyelesaikan pertanyaan di sesi ini
+    if all_questions_answered and questions_completed_in_this_session:
+        print(Fore.MAGENTA + "🎰 Memeriksa jackpot...")
+        jackpot_data = check_jackpot(token, proxies)
+        
+        if jackpot_data:
+            jackpot_amount = jackpot_data.get("amount", "0")
+            print(Fore.MAGENTA + f"🎰 Jackpot Amount: {jackpot_amount} PEPE")
+            
+            # Add to total earnings if we're reporting them from this session
+            if 'total_earnings' in locals():
+                total_earnings += float(jackpot_amount)
+                print(Fore.GREEN + f"💰 Total keseluruhan: {total_earnings} PEPE")
+        else:
+            print(Fore.RED + "❌ Gagal mendapatkan jackpot")
+    else:
+        # Jelaskan mengapa kita tidak memeriksa jackpot
+        if all_questions_answered and not questions_completed_in_this_session:
+            print(Fore.YELLOW + "ℹ️ Melewati pengecekan jackpot karena tidak ada pertanyaan yang diselesaikan dalam sesi ini.")
+    
+    return True
+
 # Modified process_account function to use token.txt and fix PEPE calculation
 def process_account(init_data, account_index, total_accounts, proxies=None, pepe_price=None, eligible_accounts=None, tokens=None):
     print(Fore.CYAN + f"\n[{account_index + 1}/{total_accounts}] 🔄 Memproses akun...")
@@ -717,6 +1371,12 @@ def process_account(init_data, account_index, total_accounts, proxies=None, pepe
         for i, task in enumerate(tasks):
             print(Fore.CYAN + f"\n[{i+1}/{len(tasks)}] Memproses tugas: {task['condition'].get('title', 'Tugas Tanpa Judul')}")
             process_task(token, task, proxies, invite_count)
+
+
+    print(Fore.CYAN + f"\n[{account_index + 1}/{total_accounts}] 🔄 Memproses pertanyaan pada akun...")
+
+    # Process questions for this account
+    process_questions(token, proxies)
     
     print(Fore.BLUE + f"\n✅ Selesai memproses akun {account_index + 1}/{total_accounts}")
 
